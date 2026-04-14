@@ -1,0 +1,14 @@
+{
+  "name": "yieldstation-services",
+  "version": "1.0.0",
+  "description": "Off-chain services for YieldStation (yield-router, risk-engine, rpc-listener)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.89.1",
+    "grpc": "^1.24.11",
+    "typescript": "^5.3.3"
+  }
+}
