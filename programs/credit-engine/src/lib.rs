@@ -16,7 +16,9 @@ pub mod credit_engine { // Declares the public module named 'credit_engine' whic
         let state = &mut ctx.accounts.state; // Creates a mutable reference to the `state` account so we can modify its data.
         state.admin = ctx.accounts.admin.key(); // Saves the public key of the person running this transaction as the admin.
         state.collateral_mint = ctx.accounts.collateral_mint.key(); // Saves the public key of the token type (e.g., SOL/USDC) this vault will accept.
+        state.stablecoin_mint = ctx.accounts.stablecoin_mint.key(); // Saves the public key of our newly created CRED token mint.
         state.vault_bump = ctx.bumps.vault; // Saves the cryptographic 'bump' seed of the vault PDA so the program can sign for it later.
+        state.state_bump = ctx.bumps.state; // Saves the state PDA bump needed to sign mint transactions later.
         state.total_deposits = 0; // Sets the initial total deposited collateral counter to 0.
         state.total_borrowed = 0; // Sets the initial total borrowed stablecoin counter to 0.
         Ok(()) // Returns an empty `Ok` indicating the transaction completed without errors.
@@ -88,7 +90,27 @@ pub mod credit_engine { // Declares the public module named 'credit_engine' whic
         state.total_borrowed += amount; // If the require check passes, we update the state to reflect the new debt.
         
         msg!("Borrowed {} stablecoins. Current SOL Price validation: {} (exponent: {})", amount, price_data.price, price_data.expo); // Logs the transaction and price details for debugging.
-        // Minting logic (which requires the program to sign using its PDA) goes here next
+        
+        // 5. Minting Logic (CPI)
+        // We need the program to "sign" the mint transaction. We do this using the state PDA seeds.
+        let state_bump = state.state_bump;
+        let seeds = &[STATE_SEED, &[state_bump]];
+        let signer = &[&seeds[..]];
+
+        let mint_instruction = anchor_spl::token::MintTo {
+            mint: ctx.accounts.stablecoin_mint.to_account_info(),
+            to: ctx.accounts.user_stablecoin_account.to_account_info(),
+            authority: ctx.accounts.state.to_account_info(), // The State PDA is the authority
+        };
+        
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            mint_instruction,
+            signer,
+        );
+
+        anchor_spl::token::mint_to(cpi_ctx, amount)?; // Instruct the Token Program to mint CRED to the user
+
         Ok(()) // Returns success.
     } // Closes the borrow function.
 } // Closes the credit_engine program module.
@@ -99,7 +121,7 @@ pub struct Initialize<'info> { // Defines the structure of accounts needed when 
     #[account( // Anchor attribute to define constraints and initialization rules for the `state` account.
         init, // Tells Anchor to physically create this account on the Solana blockchain.
         payer = admin, // Tells Anchor that the `admin` account will pay the SOL cost (rent) to create this data file.
-        space = 8 + 32 + 32 + 1 + 8 + 8, // Pre-allocates the exact byte size needed: Anchor discriminator (8) + 2 Pubkeys (64) + 1 u8 (1) + 2 u64s (16).
+        space = 8 + 32 + 32 + 32 + 1 + 1 + 8 + 8, // Pre-allocates space: discriminator + admin + col_mint + stable_mint + 2 bumps + 2 u64s.
         seeds = [STATE_SEED], // Tells Anchor this account's address is a PDA derived from the "state" seed.
         bump // Tells Anchor to automatically find and inject the cryptographic bump for the PDA.
     )] // Closes the account macro attributes.
@@ -107,6 +129,15 @@ pub struct Initialize<'info> { // Defines the structure of accounts needed when 
     
     // The specific token type this engine accepts (e.g., Devnet USDC or wSOL)
     pub collateral_mint: Account<'info, Mint>, // A read-only account representing the Token Mint (contract) of the accepted collateral.
+
+    // NEW: The Synthetic Stablecoin Mint (CRED)
+    #[account(
+        init, // The program initializes its own token mint
+        payer = admin,
+        mint::decimals = 6, // E.g., 6 decimal places like USDC
+        mint::authority = state, // CRITICAL: The State PDA becomes the sole authority able to mint new tokens
+    )]
+    pub stablecoin_mint: Account<'info, Mint>,
 
     // The PDA Vault that will physically hold the user's collateral
     #[account( // Anchor attribute to define constraints for the `vault` token account.
@@ -155,6 +186,13 @@ pub struct Borrow<'info> { // Defines the accounts required to process a borrow 
     /// CHECK: We will verify this is the official Pyth SOL/USD account using the Pyth SDK logic inside the function
     pub pyth_price_account: AccountInfo<'info>, // A raw, untyped account. We must manually verify its data inside the function (which we do with the Pyth SDK).
     
+    #[account(mut, address = state.stablecoin_mint)] // Validates this is the correct stablecoin mint associated with our protocol
+    pub stablecoin_mint: Account<'info, Mint>,
+
+    #[account(mut)] // Marks the user's stablecoin account mutable so it can receive minted tokens
+    pub user_stablecoin_account: Account<'info, TokenAccount>, // Note: Must be created by user off-chain or via ATAG before invoking borrow
+
+    pub token_program: Program<'info, Token>, // Needed for token::mint_to instruction
     pub system_program: Program<'info, System>, // The core Solana System Program.
 } // Closes the Borrow struct.
 
@@ -162,7 +200,9 @@ pub struct Borrow<'info> { // Defines the accounts required to process a borrow 
 pub struct EngineState { // The blueprint for the data saved in our `state` PDA.
     pub admin: Pubkey,           // Stores the administrator's Solana address (32 bytes).
     pub collateral_mint: Pubkey, // Stores the address of the accepted token type (32 bytes).
+    pub stablecoin_mint: Pubkey, // Stores the address of our synthetic "CRED" token mint (32 bytes).
     pub vault_bump: u8,          // Stores the 1-byte number needed to derive the vault's address later (1 byte).
+    pub state_bump: u8,          // Stores the 1-byte number needed to sign transactions as the state PDA (1 byte).
     pub total_deposits: u64,     // Stores the sum of all collateral ever deposited (8 bytes).
     pub total_borrowed: u64,     // Stores the sum of all debt issued (8 bytes).
 } // Closes the EngineState struct.
