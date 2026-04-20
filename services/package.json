@@ -4,11 +4,16 @@
   "description": "Off-chain services for YieldStation (yield-router, risk-engine, rpc-listener)",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "ts-node rpc_streamer.ts",
+    "dev": "ts-node rpc_streamer.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "@solana/web3.js": "^1.89.1",
-    "grpc": "^1.24.11",
+    "@types/dotenv": "^8.2.0",
+    "@types/node": "^20.11.16",
+    "dotenv": "^16.4.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }
 }

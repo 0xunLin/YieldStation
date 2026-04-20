@@ -113,6 +113,45 @@ pub mod credit_engine { // Declares the public module named 'credit_engine' whic
 
         Ok(()) // Returns success.
     } // Closes the borrow function.
+
+    pub fn reinvest(ctx: Context<Reinvest>, amount: u64) -> Result<()> { // Instruction for the bot to move idle collateral to a yield-bearing account.
+        let state = &ctx.accounts.state; // Get a reference to the global state.
+        
+        let vault_bump = state.vault_bump; // Retrieve the saved vault PDA bump.
+        let seeds = &[VAULT_SEED, &[vault_bump]]; // Reconstruct the seeds for the vault PDA.
+        let signer = &[&seeds[..]]; // Create a signer slice for the CPI call.
+
+        let transfer_instruction = Transfer { // Define the SPL Token transfer.
+            from: ctx.accounts.vault.to_account_info(), // Source: our internal collateral vault.
+            to: ctx.accounts.yield_vault.to_account_info(), // Destination: the external yield-bearing account (e.g., Kamino).
+            authority: ctx.accounts.vault.to_account_info(), // Authority: the vault PDA itself (proving program ownership via seeds).
+        };
+
+        let cpi_ctx = CpiContext::new_with_signer( // Create the CPI context that includes the program's signature.
+            ctx.accounts.token_program.to_account_info(), // Target: SPL Token Program.
+            transfer_instruction, // The transfer details.
+            signer, // The PDA seeds that allow the program to "sign" for the vault.
+        );
+
+        token::transfer(cpi_ctx, amount)?; // Execute the transfer to the yield strategy.
+        
+        msg!("Reinvested {} lamports into the yield strategy.", amount); // Log the reinvestment event.
+        Ok(()) // Return success.
+    }
+
+    pub fn apply_yield(ctx: Context<ApplyYield>, yield_amount: u64) -> Result<()> { // Instruction for the bot to "shave off" debt using earned yield.
+        let state = &mut ctx.accounts.state; // Get a mutable reference to the global state.
+        
+        // Prevent underflow: if yield is more than total debt, set debt to zero.
+        if yield_amount >= state.total_borrowed {
+            state.total_borrowed = 0; // Total debt fully paid off.
+        } else {
+            state.total_borrowed -= yield_amount; // Reduce total debt by the harvested yield amount.
+        }
+        
+        msg!("Applied {} in yield. New total system debt: {}", yield_amount, state.total_borrowed); // Log the "debt shaving" event.
+        Ok(()) // Return success.
+    }
 } // Closes the credit_engine program module.
 
 #[derive(Accounts)] // A macro that automatically generates the account validation logic for the struct below.
@@ -192,9 +231,32 @@ pub struct Borrow<'info> { // Defines the accounts required to process a borrow 
     #[account(mut)] // Marks the user's stablecoin account mutable so it can receive minted tokens
     pub user_stablecoin_account: Account<'info, TokenAccount>, // Note: Must be created by user off-chain or via ATAG before invoking borrow
 
+    pub sysvar_rent: Sysvar<'info, Rent>, // Needed for token account operations if needed
     pub token_program: Program<'info, Token>, // Needed for token::mint_to instruction
     pub system_program: Program<'info, System>, // The core Solana System Program.
 } // Closes the Borrow struct.
+
+#[derive(Accounts)] // Generates validation for the reinvestment instruction.
+pub struct Reinvest<'info> {
+    #[account(seeds = [STATE_SEED], bump)] // Verify the state PDA is correct.
+    pub state: Account<'info, EngineState>,
+    
+    #[account(mut, seeds = [VAULT_SEED], bump)] // The vault we are moving funds FROM.
+    pub vault: Account<'info, TokenAccount>,
+    
+    #[account(mut)] // The account we are moving funds TO (the "Yield Aggregator").
+    pub yield_vault: Account<'info, TokenAccount>,
+    
+    pub token_program: Program<'info, Token>, // The SPL Token program to execute the transfer.
+}
+
+#[derive(Accounts)] // Generates validation for the yield application instruction.
+pub struct ApplyYield<'info> {
+    #[account(mut, seeds = [STATE_SEED], bump)] // The state account where we record the debt reduction.
+    pub state: Account<'info, EngineState>,
+    
+    pub admin: Signer<'info>, // Only the authorized admin or bot can trigger debt shaving.
+}
 
 #[account] // A macro that tells Anchor this struct defines the layout of data inside an on-chain account.
 pub struct EngineState { // The blueprint for the data saved in our `state` PDA.
