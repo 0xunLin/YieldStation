@@ -14,8 +14,7 @@ dotenv.config(); // Loads the variables from your .env file so they are availabl
  * and applying "Yield" to reduce the global debt.
  */
 
-// Your credit-engine program ID
-const PROGRAM_ID = new PublicKey("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"); // Sets the permanent address of your smart contract so the bot knows where to look.
+const PROGRAM_ID = new PublicKey("5pvTQ3VBns8oWnQRBZnvfgseWBEfTZNN2ExBoXxuKbxJ"); // Sets the permanent address of your smart contract so the bot knows where to look.
 
 async function startHarvester() { // Defines an asynchronous function that will run the background bot logic.
     console.log("🚜 Starting the YieldStation Harvester (The Crank)..."); // Prints a message to let you know the bot is waking up.

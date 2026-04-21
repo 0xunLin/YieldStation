@@ -9,12 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.30.0",
+    "@solana/actions": "^1.6.1",
+    "@solana/web3.js": "^1.89.1",
     "next": "16.2.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "@solana/actions": "^1.6.1",
-    "@solana/web3.js": "^1.89.1",
-    "@coral-xyz/anchor": "^0.30.0"
+    "react-qr-code": "^2.0.18"
   },
   "devDependencies": {
     "@types/node": "^20",

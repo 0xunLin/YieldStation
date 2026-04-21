@@ -2,7 +2,7 @@ use anchor_lang::prelude::*; // Imports the core Anchor framework tools, macros,
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer}; // Imports specific types and functions from the Solana Program Library (SPL) for token operations.
 use pyth_sdk_solana::load_price_feed_from_account_info; // Imports the specific Pyth SDK function to deserialize price data from an account.
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"); // Defines the hardcoded public key (address) of this specific smart contract (program).
+declare_id!("5pvTQ3VBns8oWnQRBZnvfgseWBEfTZNN2ExBoXxuKbxJ"); // Defines the hardcoded public key (address) of this specific smart contract (program).
 
 // 1. Define seeds for our PDAs (The "Combination" to our program's safes)
 pub const STATE_SEED: &[u8] = b"state"; // Creates a constant byte slice "state" used to derive the global state PDA address.
